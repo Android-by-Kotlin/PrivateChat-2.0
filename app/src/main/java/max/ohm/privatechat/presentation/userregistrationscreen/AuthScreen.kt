@@ -78,6 +78,20 @@ fun AuthScreen(navController: NavHostController, phoneAuthViewModel: PhoneAuthVi
     var countryCode by remember{
         mutableStateOf("+91")
     }
+    
+    // Country code mapping
+    val countryCodeMap = mapOf(
+        "India" to "+91",
+        "USA" to "+1",
+        "China" to "+86",
+        "Canada" to "+1",
+        "UK" to "+44",
+        "Australia" to "+61",
+        "Germany" to "+49",
+        "France" to "+33",
+        "Japan" to "+81",
+        "Brazil" to "+55"
+    )
 
     var phone by remember {
         mutableStateOf("")
@@ -140,10 +154,12 @@ fun AuthScreen(navController: NavHostController, phoneAuthViewModel: PhoneAuthVi
 
             DropdownMenu(expanded = expanded, onDismissRequest = { expanded= false}, modifier= Modifier.fillMaxWidth()) {
 
-                listOf("India", "USA", "China", "Canada").forEach{country->
+                countryCodeMap.keys.forEach{country->
 
-                DropdownMenuItem(text= { Text(text= country)},
-                    onClick =  { selectedCountry= country
+                DropdownMenuItem(text= { Text(text= "$country (${countryCodeMap[country]})")},
+                    onClick =  { 
+                        selectedCountry= country
+                        countryCode = countryCodeMap[country] ?: "+91"
                         expanded= false
                     })
                 }
@@ -199,10 +215,17 @@ fun AuthScreen(navController: NavHostController, phoneAuthViewModel: PhoneAuthVi
 
                        Button(onClick = {
 
-                           if(phone.isNotEmpty()){
-
-                               val fullPhoneNumber = "$countryCode$phone"
-                               phoneAuthViewModel.sendVerificationCode(fullPhoneNumber, activity)
+                           if(phone.isNotEmpty() && phone.length >= 7){
+                               // Remove any spaces or special characters from phone number
+                               val cleanPhone = phone.replace("[^0-9]".toRegex(), "")
+                               val fullPhoneNumber = "$countryCode$cleanPhone"
+                               
+                               // Basic validation
+                               if (cleanPhone.length >= 7 && cleanPhone.length <= 15) {
+                                   phoneAuthViewModel.sendVerificationCode(fullPhoneNumber, activity)
+                               } else {
+                                   Toast.makeText(context, "Please enter a valid phone number (7-15 digits)", Toast.LENGTH_LONG).show()
+                               }
 
                            }else{
                                Toast.makeText(context, "Please enter a valid Phone Number", Toast.LENGTH_SHORT).show()

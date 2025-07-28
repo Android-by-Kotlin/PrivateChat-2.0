@@ -5,6 +5,9 @@
 
 <!--    Internet Permission-->
     <uses-permission android:name="android.permission.INTERNET"/>
+    
+    <!-- Contacts Permission -->
+    <uses-permission android:name="android.permission.READ_CONTACTS"/>
 
     <application
         android:name=".WhatsAppCloneApplication"

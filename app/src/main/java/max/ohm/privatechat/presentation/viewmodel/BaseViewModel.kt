@@ -16,44 +16,85 @@ import com.google.firebase.database.ValueEventListener
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import max.ohm.privatechat.models.Message
+import max.ohm.privatechat.models.PhoneAuthUser
 import max.ohm.privatechat.presentation.chat_box.ChatListModel
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
-import kotlin.io.encoding.Base64
-import kotlin.io.encoding.ExperimentalEncodingApi
 
 
 class BaseViewModel: ViewModel() {
 
 
-    fun seachUserByPhoneNumber(phoneNumber: String, callback : (ChatListModel?) -> Unit) {
-          val currentUser = FirebaseAuth.getInstance().currentUser
+    fun searchUserByPhoneNumber(phoneNumber: String, callback : (ChatListModel?) -> Unit) {
+        val currentUser = FirebaseAuth.getInstance().currentUser
         if(currentUser == null){
-
             Log.e("BaseViewModel", "User is not authenticated")
             callback(null)
             return
         }
 
+        // Clean the phone number
+        var cleanPhoneNumber = phoneNumber.trim().replace(" ", "").replace("-", "")
+        
+        // If the phone number doesn't start with +, try to add a default country code
+        if (!cleanPhoneNumber.startsWith("+")) {
+            // Try with +91 (India) as default - you can make this configurable
+            if (cleanPhoneNumber.length == 10) {
+                cleanPhoneNumber = "+91$cleanPhoneNumber"
+            } else if (cleanPhoneNumber.length == 11 && cleanPhoneNumber.startsWith("1")) {
+                cleanPhoneNumber = "+$cleanPhoneNumber" // US numbers
+            }
+        }
+        
+        Log.d("BaseViewModel", "Searching for phone number: $cleanPhoneNumber")
+
         val databaseReference = FirebaseDatabase.getInstance().getReference("users")
-        databaseReference.orderByChild("phoneNumber").equalTo(phoneNumber)
+        databaseReference.orderByChild("phoneNumber").equalTo(cleanPhoneNumber)
             .addListenerForSingleValueEvent(object : ValueEventListener{
 
                 override fun onDataChange(snapshot: DataSnapshot) {
-
-                    if(snapshot.exists()){
-                        val user = snapshot.children.first().getValue(ChatListModel::class.java)
-                        callback(user)
-                    } else{
+                    try {
+                        if(snapshot.exists()){
+                            val userSnapshot = snapshot.children.firstOrNull()
+                            val userId = userSnapshot?.key
+                            
+                            // Don't return the current user
+                            if (userId != null && userId != currentUser.uid) {
+                                val phoneAuthUser = userSnapshot.getValue(PhoneAuthUser::class.java)
+                                if (phoneAuthUser != null) {
+                                    val chatListModel = ChatListModel(
+                                        name = phoneAuthUser.name ?: "Unknown",
+                                        phoneNumber = phoneAuthUser.phoneNumber,
+                                        userId = userId,
+                                        profileImage = phoneAuthUser.profileImage,
+                                        image = null,
+                                        time = null,
+                                        message = null
+                                    )
+                                    Log.d("BaseViewModel", "User found: ${phoneAuthUser.name}")
+                                    callback(chatListModel)
+                                } else {
+                                    Log.e("BaseViewModel", "Failed to parse PhoneAuthUser")
+                                    callback(null)
+                                }
+                            } else {
+                                Log.d("BaseViewModel", "User is current user or null userId")
+                                callback(null)
+                            }
+                        } else{
+                            Log.d("BaseViewModel", "No user found with phone number: $cleanPhoneNumber")
+                            callback(null)
+                        }
+                    } catch (e: Exception) {
+                        Log.e("BaseViewModel", "Error processing user search: ${e.message}")
                         callback(null)
-
                     }
                 }
 
                 override fun onCancelled(error: DatabaseError) {
-                    Log.e("BaseViewModel", "Error fething User: ${error.message}, Details : ${error.details}")
+                    Log.e("BaseViewModel", "Error fetching User: ${error.message}, Details : ${error.details}")
                     callback(null)
                 }
             }
@@ -143,24 +184,70 @@ class BaseViewModel: ViewModel() {
     }
 
     fun addChat(newChat: ChatListModel){
-
         val currentUserId = FirebaseAuth.getInstance().currentUser?.uid
+        val currentUserPhone = FirebaseAuth.getInstance().currentUser?.phoneNumber
 
-        if(currentUserId != null){
+        Log.d("BaseViewModel", "Adding chat for user: ${newChat.name}, userId: ${newChat.userId}")
+        
+        if(currentUserId != null && currentUserPhone != null && newChat.userId != null){
+            try {
+                // Create a unique chat ID for both users
+                val chatId = if (currentUserId < newChat.userId!!) {
+                    "${currentUserId}_${newChat.userId}"
+                } else {
+                    "${newChat.userId}_${currentUserId}"
+                }
 
-            val newChatRef= FirebaseDatabase.getInstance().getReference("chats").push()
-            val chatWithUser= newChat.copy(currentUserId)
-            newChatRef.setValue(chatWithUser).addOnSuccessListener{
-                Log.d("BaseViewModel", "Chat added successfully")
-            }.addOnFailureListener{
-                exception ->
+            // Add chat reference for current user
+            val currentUserChatRef = FirebaseDatabase.getInstance()
+                .getReference("users/$currentUserId/chats/$chatId")
+            currentUserChatRef.setValue(mapOf(
+                "userId" to newChat.userId,
+                "phoneNumber" to newChat.phoneNumber,
+                "name" to newChat.name,
+                "profileImage" to newChat.profileImage
+            )).addOnSuccessListener{
+                Log.d("BaseViewModel", "Chat added for current user")
+            }.addOnFailureListener{ exception ->
+                Log.e("BaseViewModel", "Failed to add chat for current user: ${exception.message}")
+            }
 
-                Log.e("BaseViewModel", "Failed to add chat: ${exception.message}")
+            // Add chat reference for the other user
+            val otherUserChatRef = FirebaseDatabase.getInstance()
+                .getReference("users/${newChat.userId}/chats/$chatId")
+            
+            // Get current user's name for the other user's chat list
+            FirebaseDatabase.getInstance().getReference("users/$currentUserId")
+                .get().addOnSuccessListener { snapshot ->
+                    val currentUserData = snapshot.getValue(PhoneAuthUser::class.java)
+                    if (currentUserData != null) {
+                        otherUserChatRef.setValue(mapOf(
+                            "userId" to currentUserId,
+                            "phoneNumber" to currentUserPhone,
+                            "name" to currentUserData.name,
+                            "profileImage" to currentUserData.profileImage
+                        )).addOnSuccessListener{
+                            Log.d("BaseViewModel", "Chat added for other user")
+                        }.addOnFailureListener{ exception ->
+                            Log.e("BaseViewModel", "Failed to add chat for other user: ${exception.message}")
+                        }
+                    }
+                }
 
+            // Also add to the main chats node for easy access
+            val chatRef = FirebaseDatabase.getInstance().getReference("chats").push()
+            val chatData = newChat.copy(userId = currentUserId)
+            chatRef.setValue(chatData).addOnSuccessListener {
+                Log.d("BaseViewModel", "Chat added to main chats node")
+            }.addOnFailureListener { exception ->
+                Log.e("BaseViewModel", "Failed to add chat to main chats: ${exception.message}")
+            }
+            
+            } catch (e: Exception) {
+                Log.e("BaseViewModel", "Error in addChat: ${e.message}")
             }
         }else{
-            Log.e("BaseViewModel", "User not authenticated")
-
+            Log.e("BaseViewModel", "User not authenticated or missing data: userId=$currentUserId, phone=$currentUserPhone, newChat.userId=${newChat.userId}")
         }
     }
 
@@ -196,7 +283,7 @@ class BaseViewModel: ViewModel() {
         onNewMessage: (Message) -> Unit
 
     ){
-        val messageRef = databaseReference.child("message")
+        val messageRef = databaseReference.child("messages")
             .child(senderPhoneNumber)
             .child(receiverPhoneNumber)
 
@@ -248,7 +335,7 @@ class BaseViewModel: ViewModel() {
     ){
 
        val chatRef= FirebaseDatabase.getInstance().reference
-           .child("message")
+           .child("messages")
            .child(senderPhoneNumber)
            .child(receiverPhoneNumber)
 
@@ -343,26 +430,23 @@ class BaseViewModel: ViewModel() {
           })
       }
 
-    @OptIn(ExperimentalEncodingApi::class)
     private fun decodeBase64toBitmap(base64Image: String):Bitmap?{
-
         return try {
-            val decodeByte = Base64.decode(base64Image,android.util.Base64.DEFAULT)
+            val decodeByte = android.util.Base64.decode(base64Image, android.util.Base64.DEFAULT)
             BitmapFactory.decodeByteArray(decodeByte, 0, decodeByte.size)
-        }catch (e: IOException){
+        }catch (e: Exception){
+            Log.e("BaseViewModel", "Error decoding base64: ${e.message}")
             null
         }
     }
 
-    @OptIn(ExperimentalEncodingApi::class)
     fun base64ToBitmap(base64String: String): Bitmap?{
-
         return try {
-            val decodeByte = Base64.decode(base64String,android.util.Base64.DEFAULT)
+            val decodeByte = android.util.Base64.decode(base64String, android.util.Base64.DEFAULT)
             val inputStream: InputStream = ByteArrayInputStream(decodeByte)
             BitmapFactory.decodeStream(inputStream)
-
-        }catch (e : IOException){
+        }catch (e : Exception){
+            Log.e("BaseViewModel", "Error converting base64 to bitmap: ${e.message}")
             null
         }
     }

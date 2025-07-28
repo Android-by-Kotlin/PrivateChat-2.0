@@ -3,7 +3,7 @@ package max.ohm.privatechat.presentation.chat_box
 data class ChatListModel(
 
     val name : String? = null,
-    val phoneNumer: String? = null,
+    val phoneNumber: String? = null,
     val image: Int? = null,
     val userId: String ? = null,
     val time : String ? = null,

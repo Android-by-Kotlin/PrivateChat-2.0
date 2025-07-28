@@ -45,6 +45,7 @@ import max.ohm.privatechat.presentation.chat_box.ChatListBox
 import max.ohm.privatechat.presentation.chat_box.ChatListModel
 import max.ohm.privatechat.presentation.navigation.Routes
 import max.ohm.privatechat.presentation.viewmodel.BaseViewModel
+import max.ohm.privatechat.utils.DebugUtils
 
 @Composable
 
@@ -60,7 +61,9 @@ fun HomeScreen(navHostController: NavHostController, homeBaseViewModel: BaseView
 
     if (userId != null) {
         LaunchedEffect(userId) {
-
+            // Debug: Check all users in database
+            DebugUtils.checkAllUsersInDatabase()
+            
             homeBaseViewModel.getChatForUser(userId) { chats ->
 
 
@@ -258,11 +261,13 @@ fun HomeScreen(navHostController: NavHostController, homeBaseViewModel: BaseView
             LazyColumn {
                 items(chatData) { chat ->
                     ChatListBox(chatListModel = chat, onClick = {
-                        navHostController.navigate(
-                            Routes.ChatScreen.createRoute(
-                                phoneNumber = chat.phoneNumer ?: "ok"
+                        if (!chat.phoneNumber.isNullOrEmpty()) {
+                            navHostController.navigate(
+                                Routes.ChatScreen.createRoute(
+                                    phoneNumber = chat.phoneNumber
+                                )
                             )
-                        )
+                        }
                     }, baseViewModel = homeBaseViewModel)
                 }
             }
@@ -292,6 +297,10 @@ fun AddUserPopup(
     var userFound by remember {
         mutableStateOf<ChatListModel?>(null)
     }
+    
+    var searchAttempted by remember {
+        mutableStateOf(false)
+    }
 
 
     Column(modifier= Modifier.fillMaxWidth().padding(16.dp)) {
@@ -299,7 +308,8 @@ fun AddUserPopup(
         TextField(
             value = phoneNumber,
             onValueChange = {phoneNumber = it},
-            label = {Text("Enter Phone Number")},
+            label = {Text("Enter Phone Number with country code")},
+            placeholder = { Text("+919876543210") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
             colors = TextFieldDefaults.colors(
@@ -313,17 +323,21 @@ fun AddUserPopup(
         Row {
 
             Button(onClick = {
-                isSearching= true
-                baseViewModel.seachUserByPhoneNumber(phoneNumber){ user ->
+                if (phoneNumber.isNotEmpty()) {
+                    isSearching= true
+                    searchAttempted = true
+                    userFound = null
+                    baseViewModel.searchUserByPhoneNumber(phoneNumber){ user ->
 
-                    isSearching = false
+                        isSearching = false
 
-                    if(user != null){
-                        userFound = user
-                    }else{
-                        userFound = null
+                        if(user != null){
+                            userFound = user
+                        }else{
+                            userFound = null
+                        }
+
                     }
-
                 }
 
 
@@ -353,8 +367,12 @@ fun AddUserPopup(
                 Text("User Found ${it.name}")
 
                 Button(onClick = {
-                    onUserAdd(it)
-                    onDismiss()
+                    try {
+                        onUserAdd(it)
+                        onDismiss()
+                    } catch (e: Exception) {
+                        // Handle error gracefully
+                    }
                 }, colors = ButtonDefaults.buttonColors(
                     colorResource(R.color.light_green)
                 )) {
@@ -362,8 +380,8 @@ fun AddUserPopup(
                 }
             }
         }?:run{
-            if(!isSearching){
-                Text("No User found with this phone Number", color = Color.Gray)
+            if(!isSearching && searchAttempted){
+                Text("No user found with this phone number", color = Color.Red)
             }
         }
 

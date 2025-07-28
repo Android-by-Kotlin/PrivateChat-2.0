@@ -2,6 +2,7 @@ package max.ohm.privatechat.presentation.chat_box
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -37,13 +38,20 @@ fun ChatListBox(
     baseViewModel : BaseViewModel
 ) {
 
-    Row(modifier = Modifier.padding(8.dp),
+    Row(modifier = Modifier
+        .padding(8.dp)
+        .fillMaxWidth()
+        .clickable { onClick() },
         verticalAlignment = Alignment.CenterVertically) {
 
         val profileImage = chatListModel?.profileImage
 
         val bitmap = remember{
-            profileImage?.let { baseViewModel.base64ToBitmap(it) }
+            if (!profileImage.isNullOrEmpty()) {
+                baseViewModel.base64ToBitmap(profileImage)
+            } else {
+                null
+            }
         }
 
         Image(

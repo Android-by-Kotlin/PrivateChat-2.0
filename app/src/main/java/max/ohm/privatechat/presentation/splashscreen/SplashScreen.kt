@@ -34,20 +34,27 @@ fun SplashScreen(navHostController: NavHostController) {
 
 
     // one time run (composable- run so many times)
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     LaunchedEffect(Unit) {
         delay(1000)
-        navHostController.navigate(Routes.WelcomeScreen){
-
-            // clear navback stack (if back to previous screen)
-
-            popUpTo<Routes.SplashScreen>{ inclusive=true }
-
-
-
+        
+        // Check if user is already signed in
+        val sharedPreferences = context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE)
+        val isSignedIn = sharedPreferences.getBoolean("isSignedIn", false)
+        val currentUser = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser
+        
+        if (isSignedIn && currentUser != null) {
+            // User is already authenticated, go directly to HomeScreen
+            navHostController.navigate(Routes.HomeScreen){
+                popUpTo<Routes.SplashScreen>{ inclusive=true }
+            }
+        } else {
+            // User is not authenticated, go to WelcomeScreen
+            navHostController.navigate(Routes.WelcomeScreen){
+                popUpTo<Routes.SplashScreen>{ inclusive=true }
+            }
         }
-
-
     }
 
 

@@ -185,7 +185,22 @@ class PhoneAuthViewModel @Inject constructor(
     fun signOut(activity: Activity){
         firebaseAuth.signOut()
         val sharePreference = activity.getSharedPreferences("app_prefs", Activity.MODE_PRIVATE)
-        sharePreference.edit().putBoolean("isSigned", false).apply()
+        sharePreference.edit().putBoolean("isSignedIn", false).apply()
+    }
+    
+    // Public method to fetch user profile
+    fun fetchUserProfile(userId: String, onResult: (PhoneAuthUser?) -> Unit) {
+        val userRef = userRef.child(userId)
+        userRef.get().addOnSuccessListener { snapshot ->
+            if (snapshot.exists()) {
+                val userProfile = snapshot.getValue(PhoneAuthUser::class.java)
+                onResult(userProfile)
+            } else {
+                onResult(null)
+            }
+        }.addOnFailureListener {
+            onResult(null)
+        }
     }
 
 
