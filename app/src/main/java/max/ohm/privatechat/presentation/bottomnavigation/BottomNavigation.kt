@@ -36,13 +36,12 @@ fun BottomNavigation(
     selectedItem: Int
 ) {
 
- val items = listOf(
-     NavigationItem("Chats", R.drawable.chat_icon, R.drawable.outline_chat_24),
-     NavigationItem("Updates", R.drawable.update_icon, R.drawable.update_icon),
-     NavigationItem("Communities", R.drawable.baseline_groups_24, R.drawable.outline_chat_24),
-     NavigationItem("Calls", R.drawable.telephone, R.drawable.outline_chat_24)
-
- )
+    val items = listOf(
+        NavigationItem("Chats", R.drawable.chat_icon, R.drawable.outline_chat_24),
+        NavigationItem("Updates", R.drawable.update_icon, R.drawable.update_icon),
+        NavigationItem("Communities", R.drawable.baseline_groups_24, R.drawable.outline_chat_24),
+        NavigationItem("Calls", R.drawable.telephone, R.drawable.outline_chat_24)
+    )
 
     NavigationBar(containerColor = Color.White, modifier = Modifier.height(80.dp)) {
 

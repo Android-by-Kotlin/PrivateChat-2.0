@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -14,6 +15,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -29,9 +31,12 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import com.google.firebase.auth.FirebaseAuth
+import kotlinx.coroutines.launch
 import max.ohm.privatechat.R
 import max.ohm.privatechat.models.Message
-import max.ohm.privatechat.presentation.viewmodel.BaseViewModel
+import max.ohm.privatechat.models.MessageStatus
+import max.ohm.privatechat.presentation.viewmodel.ChatViewModel
+import max.ohm.privatechat.ui.theme.WhatsAppColors
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -41,33 +46,40 @@ fun ChatScreen(
     navController: NavHostController,
     receiverPhoneNumber: String,
     receiverName: String = "Contact",
-    receiverProfileImage: String? = null,
-    baseViewModel: BaseViewModel = hiltViewModel()
+receiverProfileImage: String? = null,
+    chatViewModel: ChatViewModel = hiltViewModel()
 ) {
     val currentUser = FirebaseAuth.getInstance().currentUser
     val currentUserPhone = currentUser?.phoneNumber ?: ""
     
     var messageText by remember { mutableStateOf("") }
-    var messages by remember { mutableStateOf<List<Message>>(emptyList()) }
+val messages by chatViewModel.messages.collectAsState()
+    val messageIds = remember { mutableSetOf<String>() }
     
     val context = LocalContext.current
+    val scrollState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
     
-    // Load messages when screen opens
+    // Auto-scroll to bottom when new messages arrive
+    LaunchedEffect(messages.size) {
+        if (messages.isNotEmpty()) {
+            coroutineScope.launch {
+                scrollState.animateScrollToItem(messages.size - 1)
+            }
+        }
+    }
+    
+    // Load messages when screen opens with a small delay to ensure proper initialization
     LaunchedEffect(receiverPhoneNumber) {
-        baseViewModel.getMessage(currentUserPhone, receiverPhoneNumber) { newMessage ->
-            messages = messages + newMessage
-        }
-        
-        // Also load messages from receiver to sender
-        baseViewModel.getMessage(receiverPhoneNumber, currentUserPhone) { newMessage ->
-            messages = messages + newMessage
-        }
+        kotlinx.coroutines.delay(100) // Small delay to ensure proper initialization
+        chatViewModel.loadMessagesForChat(receiverPhoneNumber)
+        chatViewModel.markChatAsRead(receiverPhoneNumber)
     }
     
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.White)
+            .background(WhatsAppColors.DarkBackground)
     ) {
         // Top Bar
         TopAppBar(
@@ -149,22 +161,85 @@ fun ChatScreen(
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = Color.White
-            )
+                containerColor = WhatsAppColors.DarkSurface,
+                titleContentColor = WhatsAppColors.DarkTextPrimary,
+                navigationIconContentColor = WhatsAppColors.DarkTextPrimary
+            ),
+            actions = {
+                IconButton(onClick = { }) {
+                    Icon(
+                        painter = painterResource(R.drawable.baseline_videocam_24),
+                        contentDescription = "Video call",
+                        tint = WhatsAppColors.DarkTextSecondary
+                    )
+                }
+                IconButton(onClick = { }) {
+                    Icon(
+                        painter = painterResource(R.drawable.baseline_call_24),
+                        contentDescription = "Voice call",
+                        tint = WhatsAppColors.DarkTextSecondary
+                    )
+                }
+                IconButton(onClick = { }) {
+                    Icon(
+                        painter = painterResource(R.drawable.more),
+                        contentDescription = "More options",
+                        tint = WhatsAppColors.DarkTextSecondary
+                    )
+                }
+            }
         )
         
-        // Messages List
-        LazyColumn(
+        // Messages List with WhatsApp-like background
+        Box(
             modifier = Modifier
                 .weight(1f)
-                .padding(horizontal = 8.dp),
-            reverseLayout = false
+                .fillMaxWidth()
+                .background(WhatsAppColors.DarkBackground)
         ) {
-            items(messages.sortedBy { it.timeStamp }) { message ->
-                MessageItem(
-                    message = message,
-                    isCurrentUser = message.senderPhoneNumber == currentUserPhone
-                )
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                state = scrollState,
+                reverseLayout = false
+            ) {
+                // Group messages by date
+                val groupedMessages = messages.groupBy { message ->
+                    SimpleDateFormat("dd MMMM yyyy", Locale.getDefault()).format(Date(message.timeStamp))
+                }
+                
+                groupedMessages.forEach { (date, messagesForDate) ->
+                    // Date separator
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Card(
+                                shape = RoundedCornerShape(8.dp),
+                                colors = CardDefaults.cardColors(containerColor = WhatsAppColors.DarkCard)
+                            ) {
+                                Text(
+                                    text = date,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                                    color = WhatsAppColors.DarkTextSecondary,
+                                    fontSize = 13.sp
+                                )
+                            }
+                        }
+                    }
+                    
+                    // Messages for this date
+                    items(messagesForDate) { message ->
+                        MessageItem(
+                            message = message,
+                            isCurrentUser = message.senderPhoneNumber == currentUserPhone
+                        )
+                    }
+                }
             }
         }
         
@@ -172,43 +247,86 @@ fun ChatScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .background(WhatsAppColors.DarkSurface)
                 .padding(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            TextField(
-                value = messageText,
-                onValueChange = { messageText = it },
-                placeholder = { Text("Type a message...") },
+            Card(
                 modifier = Modifier.weight(1f),
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Color.LightGray.copy(alpha = 0.2f),
-                    unfocusedContainerColor = Color.LightGray.copy(alpha = 0.2f),
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent
-                ),
-                shape = RoundedCornerShape(25.dp)
-            )
+                shape = RoundedCornerShape(25.dp),
+                colors = CardDefaults.cardColors(containerColor = WhatsAppColors.DarkCard)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.baseline_emoji_emotions_24),
+                        contentDescription = "Emoji",
+                        tint = WhatsAppColors.DarkTextSecondary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    
+                    TextField(
+                        value = messageText,
+                        onValueChange = { messageText = it },
+                        placeholder = { 
+                            Text(
+                                "Message", 
+                                color = WhatsAppColors.DarkTextSecondary
+                            ) 
+                        },
+                        modifier = Modifier.weight(1f),
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent,
+                            cursorColor = WhatsAppColors.LightGreen,
+                            focusedTextColor = WhatsAppColors.DarkTextPrimary,
+                            unfocusedTextColor = WhatsAppColors.DarkTextPrimary
+                        ),
+                        singleLine = true
+                    )
+                    
+                    Icon(
+                        painter = painterResource(R.drawable.baseline_attach_file_24),
+                        contentDescription = "Attach",
+                        tint = WhatsAppColors.DarkTextSecondary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    
+                    if (messageText.isEmpty()) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Icon(
+                            painter = painterResource(R.drawable.camera),
+                            contentDescription = "Camera",
+                            tint = WhatsAppColors.DarkTextSecondary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+            }
             
             Spacer(modifier = Modifier.width(8.dp))
             
             FloatingActionButton(
                 onClick = {
                     if (messageText.isNotEmpty()) {
-                        baseViewModel.sendMessage(
-                            currentUserPhone,
-                            receiverPhoneNumber,
-                            messageText
-                        )
+chatViewModel.sendMessage(
+    receiverPhoneNumber = receiverPhoneNumber,
+    messageText = messageText
+)
                         messageText = ""
                     }
                 },
                 modifier = Modifier.size(48.dp),
-                containerColor = colorResource(R.color.light_green)
+                containerColor = WhatsAppColors.LightGreen
             ) {
                 Icon(
                     imageVector = Icons.Default.Send,
                     contentDescription = "Send",
-                    tint = Color.White
+                    tint = WhatsAppColors.DarkBackground
                 )
             }
         }
@@ -222,11 +340,15 @@ fun MessageItem(
 ) {
     val alignment = if (isCurrentUser) Alignment.CenterEnd else Alignment.CenterStart
     val backgroundColor = if (isCurrentUser) 
-        colorResource(R.color.light_green).copy(alpha = 0.8f) 
+        Color(0xFFDCF8C6) // WhatsApp green for sent messages
     else 
-        Color.LightGray.copy(alpha = 0.3f)
+        Color.White // White for received messages
     
-    val textColor = if (isCurrentUser) Color.White else Color.Black
+    val bubbleShape = if (isCurrentUser) {
+        RoundedCornerShape(12.dp, 12.dp, 0.dp, 12.dp)
+    } else {
+        RoundedCornerShape(12.dp, 12.dp, 12.dp, 0.dp)
+    }
     
     // Format timestamp
     val dateFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
@@ -235,32 +357,70 @@ fun MessageItem(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 2.dp),
+            .padding(
+                start = if (isCurrentUser) 40.dp else 8.dp,
+                end = if (isCurrentUser) 8.dp else 40.dp,
+                top = 2.dp,
+                bottom = 2.dp
+            ),
         contentAlignment = alignment
     ) {
         Card(
             modifier = Modifier
-                .widthIn(min = 100.dp, max = 280.dp),
+                .widthIn(min = 80.dp, max = 280.dp),
             colors = CardDefaults.cardColors(containerColor = backgroundColor),
-            shape = RoundedCornerShape(12.dp)
+            shape = bubbleShape,
+            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
         ) {
-            Column(
-                modifier = Modifier.padding(12.dp)
+            Row(
+                modifier = Modifier.padding(
+                    start = 12.dp,
+                    end = 8.dp,
+                    top = 8.dp,
+                    bottom = 8.dp
+                ),
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
                     text = message.message,
-                    color = textColor,
-                    fontSize = 14.sp
+                    color = Color.Black,
+                    fontSize = 15.sp,
+                    modifier = Modifier.weight(1f, fill = false)
                 )
                 
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.width(8.dp))
                 
-                Text(
-                    text = formattedTime,
-                    color = textColor.copy(alpha = 0.7f),
-                    fontSize = 10.sp,
-                    modifier = Modifier.align(Alignment.End)
-                )
+                Row(
+                    modifier = Modifier.align(Alignment.Bottom),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = formattedTime,
+                        color = Color.Gray,
+                        fontSize = 11.sp
+                    )
+                    
+                    // Show message status for current user's messages
+                    if (isCurrentUser) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            painter = painterResource(
+                                when (message.messageStatus) {
+                                    MessageStatus.SENDING -> R.drawable.ic_check
+                                    MessageStatus.SENT -> R.drawable.ic_check
+                                    MessageStatus.DELIVERED -> R.drawable.ic_double_check
+                                    MessageStatus.READ -> R.drawable.ic_double_check_blue
+                                }
+                            ),
+                            contentDescription = "Message status",
+                            modifier = Modifier.size(16.dp),
+                            tint = if (message.messageStatus == MessageStatus.READ) 
+                                Color(0xFF53BDEB) // WhatsApp blue for read receipts
+                            else 
+                                Color.Gray
+                        )
+                    }
+                }
             }
         }
     }

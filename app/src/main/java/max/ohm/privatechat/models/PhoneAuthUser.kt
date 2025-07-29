@@ -5,7 +5,6 @@ class PhoneAuthUser(
     val phoneNumber:String= "",
     val name:String= "",
     val status : String= "",
-    val profileImage: String? = null  // it can be string or null
-
-
+    val profileImage: String? = null,  // it can be string or null
+    val about: String = "Hey there! I am using WhatsApp."
 )

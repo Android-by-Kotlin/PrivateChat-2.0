@@ -17,6 +17,7 @@ import max.ohm.privatechat.presentation.chatscreen.ChatScreen
 import max.ohm.privatechat.presentation.communitiesscreen.CommunitiesScreen
 import max.ohm.privatechat.presentation.homescreen.HomeScreen
 import max.ohm.privatechat.presentation.profile.UserProfileSetScreen
+import max.ohm.privatechat.presentation.profile.UserProfileScreen
 import max.ohm.privatechat.presentation.splashscreen.SplashScreen
 import max.ohm.privatechat.presentation.updatescreen.UpdateScreen
 import max.ohm.privatechat.presentation.userregistrationscreen.AuthScreen
@@ -93,9 +94,12 @@ fun WhatsAppNavigationSystem() {
                 navController = navController,
                 receiverPhoneNumber = phoneNumber,
                 receiverName = receiverName,
-                receiverProfileImage = receiverProfileImage,
-                baseViewModel = baseViewModel
+                receiverProfileImage = receiverProfileImage
             )
+        }
+        
+        composable<Routes.UserProfileScreen>{
+            UserProfileScreen(navController)
         }
 
     }

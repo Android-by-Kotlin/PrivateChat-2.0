@@ -15,10 +15,16 @@ import dagger.hilt.android.AndroidEntryPoint
 import max.ohm.privatechat.presentation.navigation.WhatsAppNavigationSystem
 import max.ohm.privatechat.presentation.splashscreen.SplashScreen
 import max.ohm.privatechat.ui.theme.PrivateChatTheme
+import max.ohm.privatechat.utils.OnlineStatusManager
+import javax.inject.Inject
 
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+    
+    @Inject
+    lateinit var onlineStatusManager: OnlineStatusManager
+    
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         //enableEdgeToEdge()
@@ -27,5 +33,20 @@ class MainActivity : ComponentActivity() {
                 WhatsAppNavigationSystem()
             }
         }
+    }
+    
+    override fun onResume() {
+        super.onResume()
+        onlineStatusManager.startOnlineTracking()
+    }
+    
+    override fun onPause() {
+        super.onPause()
+        onlineStatusManager.updateLastSeen()
+    }
+    
+    override fun onDestroy() {
+        super.onDestroy()
+        onlineStatusManager.stopOnlineTracking()
     }
 }

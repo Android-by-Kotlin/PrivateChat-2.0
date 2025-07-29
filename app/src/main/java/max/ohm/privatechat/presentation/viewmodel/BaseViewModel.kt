@@ -1,7 +1,5 @@
 package max.ohm.privatechat.presentation.viewmodel
 
-
-import android.R.id.message
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Log
@@ -16,6 +14,7 @@ import com.google.firebase.database.ValueEventListener
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import max.ohm.privatechat.models.Message
+import max.ohm.privatechat.models.MessageStatus
 import max.ohm.privatechat.models.PhoneAuthUser
 import max.ohm.privatechat.presentation.chat_box.ChatListModel
 import java.io.ByteArrayInputStream
@@ -256,10 +255,12 @@ class BaseViewModel: ViewModel() {
     fun sendMessage(senderPhoneNumber: String, receiverPhoneNumber: String, messageText: String){
          val messageId = databaseReference.push().key?: return
          val message = Message(
-             senderPhoneNumber,
-             messageText,
-             System.currentTimeMillis()
-
+             chatPhoneNumber = receiverPhoneNumber,
+             senderPhoneNumber = senderPhoneNumber,
+             message = messageText,
+             timeStamp = System.currentTimeMillis(),
+             isRead = false,
+             messageStatus = MessageStatus.SENT
          )
 
         databaseReference.child("messages")
@@ -325,6 +326,55 @@ class BaseViewModel: ViewModel() {
 
 
     }
+    
+    // New function to get messages from both directions
+    fun getMessages(
+        currentUserPhone: String,
+        otherUserPhone: String,
+        onNewMessage: (Message) -> Unit
+    ) {
+        // Listen to messages sent by current user
+        val sentRef = databaseReference.child("messages")
+            .child(currentUserPhone)
+            .child(otherUserPhone)
+            
+        sentRef.addChildEventListener(object : ChildEventListener {
+            override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
+                val message = snapshot.getValue(Message::class.java)
+                if (message != null) {
+                    onNewMessage(message)
+                }
+            }
+            
+            override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {}
+            override fun onChildRemoved(snapshot: DataSnapshot) {}
+            override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) {}
+            override fun onCancelled(error: DatabaseError) {
+                Log.e("BaseViewModel", "Error loading sent messages: ${error.message}")
+            }
+        })
+        
+        // Listen to messages received by current user
+        val receivedRef = databaseReference.child("messages")
+            .child(otherUserPhone)
+            .child(currentUserPhone)
+            
+        receivedRef.addChildEventListener(object : ChildEventListener {
+            override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
+                val message = snapshot.getValue(Message::class.java)
+                if (message != null) {
+                    onNewMessage(message)
+                }
+            }
+            
+            override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {}
+            override fun onChildRemoved(snapshot: DataSnapshot) {}
+            override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) {}
+            override fun onCancelled(error: DatabaseError) {
+                Log.e("BaseViewModel", "Error loading received messages: ${error.message}")
+            }
+        })
+    }
 
     fun fetchLastMessageForChat(
         senderPhoneNumber: String,
@@ -346,11 +396,12 @@ class BaseViewModel: ViewModel() {
                 override fun onDataChange(snapshot: DataSnapshot) {
 
                     if(snapshot.exists()){
-                        val lastMessage= snapshot.children.firstOrNull()?.child("message")?.value as? String
-                        val timestamp= snapshot.children.firstOrNull()?.child("timestamp")?.value as? String
+                        val lastMessageSnapshot = snapshot.children.lastOrNull()
+                        val lastMessage = lastMessageSnapshot?.child("message")?.value as? String
+                        val timestamp = lastMessageSnapshot?.child("timeStamp")?.value as? Long
 
-                        // higher order funnction
-                        onLastMessageFetched(lastMessage?: "No message", timestamp?: "--:--")
+                        // higher order function
+                        onLastMessageFetched(lastMessage?: "No message", timestamp?.toString() ?: "--:--")
 
                     }else{
                         onLastMessageFetched("No message", "--:--")
@@ -442,13 +493,102 @@ class BaseViewModel: ViewModel() {
 
     fun base64ToBitmap(base64String: String): Bitmap?{
         return try {
-            val decodeByte = android.util.Base64.decode(base64String, android.util.Base64.DEFAULT)
+            // Clean the base64 string
+            val cleanBase64 = base64String.trim().replace("\n", "").replace("\r", "")
+            
+            // Check if it's a valid base64 string
+            if (cleanBase64.isEmpty() || !isValidBase64(cleanBase64)) {
+                Log.w("BaseViewModel", "Invalid base64 string provided")
+                return null
+            }
+            
+            val decodeByte = android.util.Base64.decode(cleanBase64, android.util.Base64.DEFAULT)
             val inputStream: InputStream = ByteArrayInputStream(decodeByte)
-            BitmapFactory.decodeStream(inputStream)
+            val bitmap = BitmapFactory.decodeStream(inputStream)
+            
+            if (bitmap == null) {
+                Log.w("BaseViewModel", "Failed to decode bitmap from base64")
+            }
+            
+            bitmap
         }catch (e : Exception){
             Log.e("BaseViewModel", "Error converting base64 to bitmap: ${e.message}")
             null
         }
+    }
+    
+    private fun isValidBase64(str: String): Boolean {
+        return try {
+            // Basic check for base64 validity
+            str.matches(Regex("^[A-Za-z0-9+/]*={0,2}$")) && str.length % 4 == 0
+        } catch (e: Exception) {
+            false
+        }
+    }
+    
+    // Get unread message count for a specific chat
+    fun getUnreadMessageCount(
+        currentUserPhone: String,
+        otherUserPhone: String,
+        onCountFetched: (Int) -> Unit
+    ) {
+        val receivedRef = databaseReference.child("messages")
+            .child(otherUserPhone)
+            .child(currentUserPhone)
+            
+        receivedRef.orderByChild("isRead").equalTo(false)
+            .addListenerForSingleValueEvent(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    val unreadCount = snapshot.childrenCount.toInt()
+                    onCountFetched(unreadCount)
+                }
+                
+                override fun onCancelled(error: DatabaseError) {
+                    Log.e("BaseViewModel", "Error fetching unread count: ${error.message}")
+                    onCountFetched(0)
+                }
+            })
+    }
+    
+    // Mark all messages in a chat as read
+    fun markMessagesAsRead(
+        currentUserPhone: String,
+        otherUserPhone: String
+    ) {
+        val receivedRef = databaseReference.child("messages")
+            .child(otherUserPhone)
+            .child(currentUserPhone)
+            
+        receivedRef.addListenerForSingleValueEvent(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                snapshot.children.forEach { messageSnapshot ->
+                    val messageId = messageSnapshot.key
+                    if (messageId != null) {
+                        messageSnapshot.ref.child("isRead").setValue(true)
+                        messageSnapshot.ref.child("status").setValue(MessageStatus.READ.name)
+                    }
+                }
+            }
+            
+            override fun onCancelled(error: DatabaseError) {
+                Log.e("BaseViewModel", "Error marking messages as read: ${error.message}")
+            }
+        })
+    }
+    
+    // Update message delivery status
+    fun updateMessageStatus(
+        senderPhone: String,
+        receiverPhone: String,
+        messageId: String,
+        status: MessageStatus
+    ) {
+        val messageRef = databaseReference.child("messages")
+            .child(senderPhone)
+            .child(receiverPhone)
+            .child(messageId)
+            
+        messageRef.child("status").setValue(status.name)
     }
 
 

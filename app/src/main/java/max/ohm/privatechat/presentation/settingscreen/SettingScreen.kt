@@ -82,7 +82,7 @@ fun SettingScreen(
             ProfileSection(
                 userProfile = userProfile,
                 onProfileClick = {
-                    navHostController.navigate(Routes.UserProfileSetScreen)
+                    navHostController.navigate(Routes.UserProfileScreen)
                 }
             )
 

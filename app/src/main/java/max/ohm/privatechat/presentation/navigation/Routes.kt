@@ -42,8 +42,8 @@ sealed class Routes {
         fun createRoute(phoneNumber: String)= "chat_screen/$phoneNumber"
 
     }
-
-
-
+    
+    @Serializable
+    data object UserProfileScreen: Routes()
 
 }
