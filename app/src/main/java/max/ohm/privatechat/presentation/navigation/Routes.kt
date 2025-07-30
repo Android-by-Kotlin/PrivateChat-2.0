@@ -38,8 +38,16 @@ sealed class Routes {
     @Serializable
     data object ChatScreen: Routes(){
 
-        const val route = "chat_screen/{phoneNumber}"
-        fun createRoute(phoneNumber: String)= "chat_screen/$phoneNumber"
+        const val route = "chat_screen/{phoneNumber}?profileImage={profileImage}&name={name}"
+        fun createRoute(phoneNumber: String, profileImage: String? = null, name: String? = null): String {
+            val encodedImage = profileImage?.let { 
+                java.net.URLEncoder.encode(it, "UTF-8")
+            } ?: ""
+            val encodedName = name?.let {
+                java.net.URLEncoder.encode(it, "UTF-8")
+            } ?: "Contact"
+            return "chat_screen/$phoneNumber?profileImage=$encodedImage&name=$encodedName"
+        }
 
     }
     

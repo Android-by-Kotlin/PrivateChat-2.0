@@ -11,6 +11,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import androidx.navigation.NavType
 import max.ohm.privatechat.presentation.callscreen.CallItemDesign
 import max.ohm.privatechat.presentation.callscreen.CallScreen
 import max.ohm.privatechat.presentation.chatscreen.ChatScreen
@@ -72,20 +74,51 @@ fun WhatsAppNavigationSystem() {
             max.ohm.privatechat.presentation.settingscreen.SettingScreen(navHostController = navController)
         }
         
-        composable(Routes.ChatScreen.route) { backStackEntry ->
+        composable(
+            route = Routes.ChatScreen.route,
+            arguments = listOf(
+                androidx.navigation.navArgument("phoneNumber") { 
+                    type = androidx.navigation.NavType.StringType 
+                },
+                androidx.navigation.navArgument("profileImage") { 
+                    type = androidx.navigation.NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                androidx.navigation.navArgument("name") { 
+                    type = androidx.navigation.NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
+        ) { backStackEntry ->
             val phoneNumber = backStackEntry.arguments?.getString("phoneNumber") ?: ""
+            val navigationProfileImage = backStackEntry.arguments?.getString("profileImage")?.let {
+                if (it.isNotEmpty()) java.net.URLDecoder.decode(it, "UTF-8") else null
+            }
+            val navigationName = backStackEntry.arguments?.getString("name")?.let {
+                if (it.isNotEmpty()) java.net.URLDecoder.decode(it, "UTF-8") else null
+            }
+            
             val baseViewModel: BaseViewModel = hiltViewModel()
             val phoneAuthViewModel: PhoneAuthViewModel = hiltViewModel()
             
-            // Fetch user details for the phone number
-            var receiverName by remember { mutableStateOf("Loading...") }
-            var receiverProfileImage by remember { mutableStateOf<String?>(null) }
+            // Use navigation parameters if available, otherwise fetch from database
+            var receiverName by remember { mutableStateOf(navigationName ?: "Loading...") }
+            var receiverProfileImage by remember { mutableStateOf<String?>(navigationProfileImage) }
             
-            LaunchedEffect(phoneNumber) {
-                baseViewModel.searchUserByPhoneNumber(phoneNumber) { user ->
-                    if (user != null) {
-                        receiverName = user.name ?: "Contact"
-                        receiverProfileImage = user.profileImage
+            // Only fetch from database if we don't have the data from navigation
+            if (navigationName == null || navigationProfileImage == null) {
+                LaunchedEffect(phoneNumber) {
+                    baseViewModel.searchUserByPhoneNumber(phoneNumber) { user ->
+                        if (user != null) {
+                            if (navigationName == null) {
+                                receiverName = user.name ?: "Contact"
+                            }
+                            if (navigationProfileImage == null) {
+                                receiverProfileImage = user.profileImage
+                            }
+                        }
                     }
                 }
             }

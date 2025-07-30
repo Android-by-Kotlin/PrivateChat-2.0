@@ -66,6 +66,8 @@ class ChatViewModel @Inject constructor(
                         val name = childSnapshot.child("name").getValue(String::class.java) ?: "Unknown"
                         val profileImage = childSnapshot.child("profileImage").getValue(String::class.java)
                         
+                        Log.d("ChatViewModel", "Syncing chat - Phone: $phoneNumber, Name: $name, Has Profile Image: ${!profileImage.isNullOrEmpty()}")
+                        
                         // Check if chat exists in local database
                         val existingChat = chatRepository.getChatByPhoneNumber(phoneNumber)
                         if (existingChat == null) {
@@ -78,6 +80,7 @@ class ChatViewModel @Inject constructor(
                                 lastMessage = null,
                                 lastMessageTime = System.currentTimeMillis()
                             )
+                            Log.d("ChatViewModel", "Creating new chat with profile image size: ${profileImage?.length ?: 0}")
                             chatRepository.insertChat(newChat)
                         } else if (existingChat.profileImage.isNullOrEmpty() && !profileImage.isNullOrEmpty()) {
                             // Update existing chat with profile image if it doesn't have one
@@ -85,6 +88,7 @@ class ChatViewModel @Inject constructor(
                                 profilePicture = profileImage,
                                 profileImage = profileImage
                             )
+                            Log.d("ChatViewModel", "Updating existing chat with profile image size: ${profileImage.length}")
                             chatRepository.updateChat(updatedChat)
                         }
                     }
@@ -286,14 +290,25 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    fun deleteChat(phoneNumber: String) {
+        viewModelScope.launch {
+            chatRepository.deleteChat(phoneNumber)
+        }
+    }
+    
+    suspend fun getProfilePicture(phoneNumber: String): String? {
+        return chatRepository.getProfilePicture(phoneNumber)
+    }
+    
     fun markChatAsRead(phoneNumber: String) {
         viewModelScope.launch {
+            // Mark messages as read in local database
             chatRepository.markChatAsRead(phoneNumber)
+            
+            // Also update Firebase
+            val currentUserPhone = firebaseAuth.currentUser?.phoneNumber ?: return@launch
+            markMessagesAsReadInFirebase(currentUserPhone, phoneNumber)
         }
-        
-        // Also update Firebase
-        val currentUserPhone = firebaseAuth.currentUser?.phoneNumber ?: return
-        markMessagesAsReadInFirebase(currentUserPhone, phoneNumber)
     }
 
     private fun markMessagesAsReadInFirebase(currentUserPhone: String, otherUserPhone: String) {

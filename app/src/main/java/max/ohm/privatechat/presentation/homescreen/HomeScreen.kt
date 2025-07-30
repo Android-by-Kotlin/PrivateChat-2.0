@@ -266,7 +266,9 @@ fun HomeScreen(
                         onClick = {
                             navHostController.navigate(
                                 Routes.ChatScreen.createRoute(
-                                    phoneNumber = chat.phoneNumber ?: ""
+                                    phoneNumber = chat.phoneNumber ?: "",
+                                    profileImage = chat.profileImage,
+                                    name = chat.name
                                 )
                             )
                         },

@@ -143,4 +143,13 @@ class ChatRepository @Inject constructor(
     ): Message? {
         return messageDao.getMessageByContent(phoneNumber, message, timestamp, senderPhoneNumber)
     }
+    
+    suspend fun getProfilePicture(phoneNumber: String): String? {
+        return try {
+            chatDao.getProfilePicture(phoneNumber)
+        } catch (e: Exception) {
+            android.util.Log.e("ChatRepository", "Error getting profile picture: ${e.message}")
+            null
+        }
+    }
 }

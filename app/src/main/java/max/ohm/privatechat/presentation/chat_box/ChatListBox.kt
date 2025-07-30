@@ -36,7 +36,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.rememberImagePainter
+import coil.compose.rememberAsyncImagePainter
 import com.google.firebase.auth.FirebaseAuth
 import max.ohm.privatechat.presentation.viewmodel.BaseViewModel
 import max.ohm.privatechat.R
@@ -86,14 +86,18 @@ fun ChatListBox(
         // Load profile image with caching
         LaunchedEffect(chatListModel.phoneNumber) {
             chatListModel.phoneNumber?.let { phoneNumber ->
+                Log.d("ChatListBox", "Loading profile image for $phoneNumber, profileImage exists: ${!chatListModel.profileImage.isNullOrEmpty()}, length: ${chatListModel.profileImage?.length ?: 0}")
+                
                 // First check memory cache
                 ImageCache.getBitmapFromCache(phoneNumber)?.let {
+                    Log.d("ChatListBox", "Found image in memory cache for $phoneNumber")
                     bitmap = it
                     return@LaunchedEffect
                 }
                 
                 // Then check disk cache
                 ImageCache.loadBitmapFromDisk(context, phoneNumber)?.let {
+                    Log.d("ChatListBox", "Found image in disk cache for $phoneNumber")
                     bitmap = it
                     return@LaunchedEffect
                 }
@@ -101,18 +105,24 @@ fun ChatListBox(
                 // Finally decode from base64 if available
                 chatListModel.profileImage?.let { profileImage ->
                     if (profileImage.isNotEmpty() && profileImage.length < 100000) {
+                        Log.d("ChatListBox", "Decoding base64 image for $phoneNumber, size: ${profileImage.length}")
                         scope.launch {
                             try {
                                 baseViewModel.base64ToBitmap(profileImage)?.let { decodedBitmap ->
                                     bitmap = decodedBitmap
                                     ImageCache.addBitmapToCache(phoneNumber, decodedBitmap)
                                     ImageCache.saveBitmapToDisk(context, phoneNumber, decodedBitmap)
+                                    Log.d("ChatListBox", "Successfully decoded and cached image for $phoneNumber")
                                 }
                             } catch (e: Exception) {
                                 Log.e("ChatListBox", "Error decoding profile image: ${e.message}")
                             }
                         }
+                    } else if (profileImage.isNotEmpty()) {
+                        Log.w("ChatListBox", "Profile image too large for $phoneNumber: ${profileImage.length} bytes")
                     }
+                } ?: run {
+                    Log.d("ChatListBox", "No profile image available for $phoneNumber")
                 }
             }
         }
@@ -125,7 +135,7 @@ fun ChatListBox(
         ) {
             if (bitmap != null) {
                 Image(
-                    painter = rememberImagePainter(bitmap),
+                    painter = rememberAsyncImagePainter(bitmap),
                     contentDescription = null,
                     modifier = Modifier
                         .fillMaxSize()
@@ -133,17 +143,19 @@ fun ChatListBox(
                     contentScale = ContentScale.Crop
                 )
             } else {
+                // Show default avatar with first letter of name
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color.Gray),
+                        .background(Color(0xFF19AB60)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        painter = painterResource(R.drawable.user_profile),
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(32.dp)
+                    val displayName = chatListModel.name ?: "?"
+                    Text(
+                        text = displayName.take(1).uppercase(),
+                        color = Color.White,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }

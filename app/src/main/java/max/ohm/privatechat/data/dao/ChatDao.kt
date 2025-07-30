@@ -38,4 +38,7 @@ interface ChatDao {
 
     @Query("DELETE FROM chats")
     suspend fun deleteAllChats()
+    
+    @Query("SELECT profilePicture FROM chats WHERE phoneNumber = :phoneNumber")
+    suspend fun getProfilePicture(phoneNumber: String): String?
 }
