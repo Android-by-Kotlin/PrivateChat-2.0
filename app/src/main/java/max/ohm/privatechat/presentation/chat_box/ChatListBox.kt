@@ -130,7 +130,7 @@ fun ChatListBox(
         // Profile Image
         Box(
             modifier = Modifier
-                .size(52.dp)
+                .size(56.dp)
                 .clip(CircleShape)
         ) {
             if (bitmap != null) {
@@ -144,18 +144,19 @@ fun ChatListBox(
                 )
             } else {
                 // Show default avatar with first letter of name
+                val displayName = chatListModel.name ?: "?"
+                val backgroundColor = getColorForName(displayName)
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color(0xFF19AB60)),
+                        .background(backgroundColor),
                     contentAlignment = Alignment.Center
                 ) {
-                    val displayName = chatListModel.name ?: "?"
                     Text(
                         text = displayName.take(1).uppercase(),
                         color = Color.White,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Medium
                     )
                 }
             }
@@ -250,4 +251,24 @@ fun isYesterday(date1: Date, date2: Date): Boolean {
     cal2.add(Calendar.DAY_OF_YEAR, -1)
     return cal1.get(Calendar.YEAR) == cal2.get(Calendar.YEAR) &&
             cal1.get(Calendar.DAY_OF_YEAR) == cal2.get(Calendar.DAY_OF_YEAR)
+}
+
+// Generate consistent colors for profile avatars based on name
+fun getColorForName(name: String): Color {
+    val colors = listOf(
+        Color(0xFF25D366), // WhatsApp Green
+        Color(0xFF128C7E), // Teal
+        Color(0xFF34B7F1), // Blue
+        Color(0xFF9C27B0), // Purple
+        Color(0xFFFF5722), // Deep Orange
+        Color(0xFF795548), // Brown
+        Color(0xFF607D8B), // Blue Grey
+        Color(0xFFE91E63), // Pink
+        Color(0xFF009688), // Teal variant
+        Color(0xFF00BCD4)  // Cyan
+    )
+    
+    val hash = name.hashCode()
+    val index = Math.abs(hash) % colors.size
+    return colors[index]
 }
