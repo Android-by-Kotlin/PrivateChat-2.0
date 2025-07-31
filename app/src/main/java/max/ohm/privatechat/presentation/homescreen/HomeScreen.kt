@@ -3,6 +3,7 @@ package max.ohm.privatechat.presentation.homescreen
 import android.graphics.Paint
 import android.graphics.drawable.shapes.RoundRectShape
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.CircleShape
@@ -51,6 +53,13 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.Manifest
+import android.content.pm.PackageManager
+import android.provider.ContactsContract
+import androidx.core.content.ContextCompat
+import androidx.compose.ui.platform.LocalContext
 
 import androidx.navigation.NavHostController
 import com.google.firebase.auth.FirebaseAuth
@@ -297,9 +306,11 @@ fun AddUserPopup(
     chatViewModel: ChatViewModel
 ) {
     var phoneNumber by remember { mutableStateOf("") }
+    var contactName by remember { mutableStateOf("") }
     var isSearching by remember { mutableStateOf(false) }
     var userFound by remember { mutableStateOf<ChatListModel?>(null) }
     var searchAttempted by remember { mutableStateOf(false) }
+    val context = LocalContext.current
     
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
@@ -318,6 +329,103 @@ fun AddUserPopup(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
 
+                // Contact picker launcher
+                val contactPickerLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.PickContact()
+                ) { uri ->
+                    uri?.let {
+                        val cursor = context.contentResolver.query(
+                            uri,
+                            null,
+                            null,
+                            null,
+                            null
+                        )
+                        cursor?.use {
+                            if (it.moveToFirst()) {
+                                val nameIndex = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+                                val name = it.getString(nameIndex)
+                                contactName = name
+                                
+                                // Get phone number
+                                val id = it.getString(it.getColumnIndex(ContactsContract.Contacts._ID))
+                                val phoneCursor = context.contentResolver.query(
+                                    ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                                    null,
+                                    ContactsContract.CommonDataKinds.Phone.CONTACT_ID + " = ?",
+                                    arrayOf(id),
+                                    null
+                                )
+                                phoneCursor?.use { pc ->
+                                    if (pc.moveToFirst()) {
+                                        val phoneIndex = pc.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+                                        val phone = pc.getString(phoneIndex)
+                                        phoneNumber = phone.replace(" ", "").replace("-", "")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Permission launcher
+                val permissionLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.RequestPermission()
+                ) { isGranted ->
+                    if (isGranted) {
+                        contactPickerLauncher.launch(null)
+                    }
+                }
+                
+                // Contact picker button
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            if (ContextCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.READ_CONTACTS
+                                ) == PackageManager.PERMISSION_GRANTED
+                            ) {
+                                contactPickerLauncher.launch(null)
+                            } else {
+                                permissionLauncher.launch(Manifest.permission.READ_CONTACTS)
+                            }
+                        },
+                    colors = CardDefaults.cardColors(
+                        containerColor = WhatsAppColors.DarkCard
+                    ),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.baseline_person_24),
+                            contentDescription = "Contacts",
+                            tint = WhatsAppColors.LightGreen,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = "Select from Contacts",
+                            color = WhatsAppColors.DarkTextPrimary,
+                            fontSize = 16.sp
+                        )
+                    }
+                }
+                
+                Text(
+                    text = "OR",
+                    color = WhatsAppColors.DarkTextSecondary,
+                    fontSize = 14.sp,
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                )
+                
+                // Manual phone number input
                 TextField(
                     value = phoneNumber,
                     onValueChange = { phoneNumber = it },
@@ -347,6 +455,16 @@ fun AddUserPopup(
                         unfocusedTextColor = WhatsAppColors.DarkTextPrimary
                     )
                 )
+                
+                // Show contact name if selected
+                if (contactName.isNotEmpty()) {
+                    Text(
+                        text = "Selected: $contactName",
+                        color = WhatsAppColors.LightGreen,
+                        fontSize = 14.sp,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
                 
                 if (isSearching) {
                     Box(
